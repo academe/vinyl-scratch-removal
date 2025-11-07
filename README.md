@@ -1,34 +1,101 @@
 # Vinyl Scratch Removal for Audacity
 
-Advanced vinyl record scratch, click, and pop removal tools using research-backed digital signal processing techniques.
+Advanced vinyl record scratch, click, and pop removal plugin using research-backed digital signal processing techniques.
 
 ## Overview
 
-This project provides two implementations for removing scratches, clicks, and pops from vinyl record digitizations:
+This project provides a **Nyquist plugin for Audacity** that removes clicks, pops, and scratches from vinyl record digitizations using adaptive threshold detection and frequency-domain processing.
 
-1. **Nyquist Plugin** - Easy-to-use plugin for Audacity
-2. **Python Tool** - Advanced standalone processor with state-of-the-art algorithms
-
-## Features
-
-### Research-Backed Techniques
-
-Both implementations use algorithms based on published research:
-
-- **Autoregressive (AR) Linear Prediction** - For natural-sounding sample interpolation
-- **Cubic Hermite Spline Interpolation** - Smooth reconstruction with continuous derivatives
-- **Adaptive Threshold Detection** - Uses local RMS analysis for robust click detection
-- **Multi-pass Processing** - Handles different types of artifacts
-- **Slope Analysis** - Detects rapid transients characteristic of clicks
-
-### Key Capabilities
-
-- Removes clicks, pops, and scratches from vinyl recordings
-- Adaptive detection adjusts to local audio characteristics
+**Key Features**:
+- Native Audacity integration (no external dependencies)
+- Real-time preview capability
+- Adaptive detection adjusts to recording characteristics
+- Multi-pass processing for thorough click removal
 - Preserves musical content while removing artifacts
-- Multiple detection modes (conservative, standard, aggressive)
-- Processes both mono and stereo audio
-- Real-time preview in Audacity (Nyquist plugin)
+
+**Also included**: A Python implementation with advanced AR interpolation for highest-quality offline processing.
+
+## Documentation
+
+📚 **Comprehensive technical documentation available in [`docs/`](docs/)**:
+
+- **[Research Findings](docs/RESEARCH_FINDINGS.md)** - Complete research on vinyl scratch removal algorithms, published papers, and commercial implementations
+- **[Nyquist Programming Guide](docs/NYQUIST_PROGRAMMING_GUIDE.md)** - Complete guide to Nyquist language and plugin development
+- **[Implementation Notes](docs/IMPLEMENTATION_NOTES.md)** - Detailed explanation of design decisions and algorithm implementation
+
+## Two Implementations
+
+### 1. Nyquist Plugin (Primary - Recommended for Most Users)
+
+**Algorithm**: Frequency-domain separation with adaptive attenuation
+- Separates audio into low-freq (music) and high-freq (transients + clicks)
+- Adaptively attenuates detected clicks in high-frequency band
+- Recombines for natural-sounding result
+
+**Advantages**:
+- Integrates directly into Audacity
+- No external dependencies or installation
+- Real-time preview
+- Fast processing
+- Easy to use
+
+**Limitations**:
+- Attenuates clicks rather than fully removing (due to Nyquist language constraints)
+- Good quality but not as perfect as AR interpolation
+
+### 2. Python Tool (Optional - For Highest Quality)
+
+**Algorithm**: Autoregressive Linear Prediction with Cubic Spline interpolation
+- Detects clicks using second derivative analysis
+- Interpolates using AR prediction (models signal statistically)
+- Falls back to cubic spline for short clicks
+
+**Advantages**:
+- Highest quality restoration (true sample interpolation)
+- State-of-the-art algorithms from research literature
+- Better for archival-quality restoration
+
+**Disadvantages**:
+- Requires Python and dependencies
+- Slower processing (no real-time preview)
+- Command-line interface only
+
+## Algorithm Overview
+
+### Nyquist Plugin Algorithm
+
+**Frequency-Domain Approach** (works within Nyquist's constraints):
+
+1. **Frequency Separation**: Split audio at 2kHz
+   - Low-freq (<2kHz): Musical content (melody, harmony)
+   - High-freq (>2kHz): Transients + clicks
+
+2. **Adaptive Detection**: Calculate local RMS envelope of high-freq component
+   - Threshold adapts to varying signal levels
+   - Reduces false positives from legitimate transients
+
+3. **Attenuation**: Reduce amplitude where clicks detected
+   - Preserves 30% of high-freq content for natural sound
+   - Smooth processing avoids discontinuities
+
+4. **Recombination**: Mix processed high-freq with unchanged low-freq
+
+5. **Multi-pass**: Repeat with decreasing threshold
+   - Pass 1: Remove obvious clicks
+   - Pass 2: Catch subtler artifacts
+
+See **[Implementation Notes](docs/IMPLEMENTATION_NOTES.md)** for complete technical details.
+
+### Python Tool Algorithm
+
+**Time-Domain AR Prediction** (highest quality):
+
+1. **Detection**: Second derivative + adaptive threshold
+2. **Interpolation**: Autoregressive linear prediction
+3. **Validation**: Width and amplitude criteria
+4. **Blending**: Smooth windowing for seamless repair
+
+See **[Research Findings](docs/RESEARCH_FINDINGS.md)** for algorithm theory and research papers.
 
 ## Installation
 
@@ -132,87 +199,104 @@ python vinyl_scratch_removal.py input.wav output.wav --mode aggressive --thresho
                         (default: 20, range: 10-50)
 ```
 
-## How It Works
+## Research Foundation
 
-### Click Detection
+This plugin implements techniques from published research in digital audio restoration:
 
-1. **Local Statistics Analysis**
-   - Calculates local RMS in sliding windows (10ms)
-   - Computes first and second derivatives of the signal
-   - Identifies rapid amplitude changes
+### Key Research Papers
 
-2. **Adaptive Thresholding**
-   - Threshold adapts to local signal level
-   - Avoids false detections in loud passages
-   - Preserves musical transients (drums, etc.)
+1. **Godsill & Rayner (1998)** - "Digital Audio Restoration: A Statistical Model Based Approach"
+   - Foundation for AR-based audio restoration
+   - Bayesian framework for click detection
+   - Statistical modeling of clean audio signals
 
-3. **Validation**
-   - Checks click width against maximum
-   - Verifies amplitude is significantly higher than surroundings
-   - Merges nearby clicks
+2. **Lagrange et al. (2020)** - "Restoration Based on High Order Sparse Linear Prediction"
+   - Sparse AR prediction reduces computation
+   - High-order models for better quality
+   - Implemented in Python version
 
-### Interpolation
+3. **Esquef et al. (2004)** - "Detection of clicks using warped linear prediction"
+   - Perceptually-weighted detection
+   - Adaptive thresholding methods
+   - Influences detection algorithm
 
-The tools use two interpolation methods:
-
-1. **Autoregressive Linear Prediction** (Python only)
-   - Models the audio signal using AR coefficients
-   - Predicts missing samples based on context
-   - More accurate for tonal content
-   - Based on research: "Restoration of Click Degraded Speech and Music"
-
-2. **Cubic Hermite Spline** (both implementations)
-   - Uses cubic polynomials for smooth interpolation
-   - Maintains continuous first derivatives
-   - Natural-sounding reconstruction
-   - Fast and robust
-
-### Multi-pass Processing
-
-- First pass: Detect and remove obvious clicks
-- Second pass: Detect remaining artifacts with reduced threshold
-- Prevents over-processing while catching all clicks
-
-## Technical Background
-
-This implementation is based on the following research:
-
-1. **Godsill, S. & Rayner, P.** - "Digital Audio Restoration: A Statistical Model Based Approach"
-   - Statistical methods for click detection
-   - AR modeling for interpolation
-
-2. **Lagrange, M., et al.** - "Restoration of Click Degraded Speech and Music Based on High Order Sparse Linear Prediction" (ResearchGate)
-   - Sparse linear prediction techniques
-   - High-order AR models
-
-3. **Esquef, P.A.A., et al.** - "Detection of clicks in audio signals using warped linear prediction"
-   - Warped linear prediction for detection
-   - Adaptive threshold methods
-
-4. **Recent advances** - "Diffusion Models for Audio Restoration" (2024)
+4. **Recent (2024)** - "Diffusion Models for Audio Restoration" (arXiv:2402.09821)
    - Modern deep learning approaches
-   - (Future implementation target)
+   - Future research direction
+
+See **[Research Findings](docs/RESEARCH_FINDINGS.md)** for complete bibliography and algorithm descriptions.
+
+## Why Two Implementations?
+
+### Nyquist Language Constraints
+
+Nyquist (LISP-based audio language) treats audio as continuous **signals** (mathematical functions), not discrete sample arrays. This philosophical difference has practical implications:
+
+**What Nyquist CAN do**:
+- Signal-level operations (filtering, mixing, multiplication)
+- Envelope following and analysis
+- Adaptive processing
+- Fast, efficient processing
+
+**What Nyquist CANNOT do**:
+- Access individual samples (`audio[i]`)
+- Array/matrix operations (needed for AR interpolation)
+- Sample-level loops and interpolation
+- FFT/spectral editing
+
+See **[Nyquist Programming Guide](docs/NYQUIST_PROGRAMMING_GUIDE.md)** for detailed explanation.
+
+### Implementation Strategy
+
+**Nyquist Plugin**: Uses frequency-domain approach that works within language constraints
+- Good quality through attenuation rather than interpolation
+- Fast, practical, works for 90% of cases
+
+**Python Tool**: Implements "ideal" algorithm from research literature
+- True sample-level interpolation
+- Highest quality for archival restoration
+- Slower, requires external dependencies
+
+**Recommendation**: Start with Nyquist plugin. Use Python tool for difficult cases or archival work.
 
 ## Comparison with Other Tools
 
-### Audacity Built-in Click Removal
+| Feature | Audacity Built-in | This Plugin (Nyquist) | This Tool (Python) | iZotope RX |
+|---------|-------------------|----------------------|-------------------|------------|
+| Quality | Fair | Good | Excellent | Excellent |
+| Speed | Fast | Fast | Slow | Medium |
+| Real-time preview | Yes | Yes | No | Yes |
+| Cost | Free | Free | Free | $$$$ |
+| Ease of use | Easy | Easy | Command-line | Easy |
+| Algorithm | Simple threshold | Adaptive attenuation | AR interpolation | ML + spectral |
+| Preservation | Fair | Good | Excellent | Excellent |
+| Integration | Built-in | Plugin | Standalone | Standalone |
 
-- **Built-in**: Simple threshold-based detection with basic interpolation
-- **This plugin**: Adaptive detection with AR/cubic spline interpolation
-- **Advantage**: Better preservation of musical content, more accurate click detection
-
-### Commercial Tools (iZotope RX, etc.)
-
-- **Commercial**: Advanced spectral editing, machine learning, visual interface
-- **This plugin**: Free, open-source, research-backed algorithms
-- **Advantage**: Free, customizable, transparent algorithms
+**When to use each**:
+- **Audacity built-in**: Quick, simple jobs
+- **This Nyquist plugin**: Most vinyl restoration tasks (recommended)
+- **This Python tool**: Archival-quality restoration, difficult cases
+- **iZotope RX**: Professional work, visual editing, budget available
 
 ## Limitations
 
-1. **Processing Time**: AR interpolation is CPU-intensive for long files
-2. **Nyquist Constraints**: Nyquist plugin uses simplified algorithms due to language limitations
-3. **Not for All Noise**: Designed for impulsive clicks/pops, not continuous noise (hiss, hum)
-4. **Manual Tuning**: May require parameter adjustment for different recordings
+### Nyquist Plugin
+
+1. **Attenuation not removal**: Reduces click amplitude rather than completely removing (language constraint)
+2. **Very loud clicks**: May still be faintly audible after processing
+3. **High-frequency percussion**: Cymbals/hi-hats may be slightly reduced on aggressive mode
+
+### Both Implementations
+
+1. **Impulsive noise only**: Designed for clicks/pops, not continuous noise (hiss, rumble, hum)
+2. **Manual tuning**: Different recordings need different parameters
+3. **Transient preservation**: May affect legitimate musical transients if set too aggressively
+
+### Python Tool
+
+1. **Processing time**: AR interpolation is CPU-intensive (not real-time)
+2. **Dependencies**: Requires Python 3.7+, NumPy, SciPy, soundfile
+3. **No GUI**: Command-line interface only
 
 ## Best Practices
 
