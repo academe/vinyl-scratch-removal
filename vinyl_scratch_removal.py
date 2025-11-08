@@ -57,9 +57,9 @@ class VinylScratchRemoval:
 
         # Detection parameters based on mode
         self.mode_params = {
-            'conservative': {'threshold_mult': 1.5, 'min_gap': 5, 'merge_distance': 10},
-            'standard': {'threshold_mult': 1.0, 'min_gap': 3, 'merge_distance': 20},
-            'aggressive': {'threshold_mult': 0.7, 'min_gap': 2, 'merge_distance': 30}
+            'conservative': {'threshold_mult': 1.5, 'min_gap': 3, 'merge_distance': 10, 'amplitude_ratio': 2.5},
+            'standard': {'threshold_mult': 1.0, 'min_gap': 2, 'merge_distance': 20, 'amplitude_ratio': 2.0},
+            'aggressive': {'threshold_mult': 0.7, 'min_gap': 1, 'merge_distance': 30, 'amplitude_ratio': 1.3}
         }
 
     def detect_clicks(self, audio):
@@ -88,15 +88,26 @@ class VinylScratchRemoval:
         # Local RMS for adaptive thresholding
         local_rms = self._sliding_rms(audio, window_size)
 
-        # Detect potential clicks based on slope change
-        abs_diff2 = np.abs(diff2)
-
         # Adaptive threshold based on local statistics
         mode_mult = self.mode_params[self.detection_mode]['threshold_mult']
         threshold_signal = local_rms * self.threshold * mode_mult
 
-        # Points exceeding threshold
-        candidates = abs_diff2 > threshold_signal
+        # Detect potential clicks based on BOTH first derivative (sudden changes)
+        # and second derivative (acceleration)
+        abs_diff1 = np.abs(diff1)
+        abs_diff2 = np.abs(diff2)
+
+        # Method 1: Second derivative (for sharp clicks)
+        candidates_diff2 = abs_diff2 > threshold_signal
+
+        # Method 2: First derivative (for gradual scratches)
+        # Use a slightly higher multiplier for first derivative since it's generally larger
+        # but not too high or we'll miss rounded/gradual scratches
+        first_deriv_threshold = threshold_signal * 1.0
+        candidates_diff1 = abs_diff1 > first_deriv_threshold
+
+        # Combine both detection methods
+        candidates = candidates_diff1 | candidates_diff2
 
         # Find connected regions (clicks)
         clicks = self._find_click_regions(candidates)
@@ -154,15 +165,18 @@ class VinylScratchRemoval:
             # Verify amplitude is significant
             if start > 0 and end < len(audio):
                 click_peak = np.max(np.abs(audio[start:end]))
+                # Use a larger reference window for more accurate baseline
+                ref_distance = 100
                 local_avg = np.mean(np.abs(
                     np.concatenate([
-                        audio[max(0, start-50):start],
-                        audio[end:min(len(audio), end+50)]
+                        audio[max(0, start-ref_distance):max(0, start-10)],
+                        audio[min(len(audio), end+10):min(len(audio), end+ref_distance)]
                     ])
                 ))
 
                 # Click should be significantly larger than surroundings
-                if click_peak > 2 * local_avg:
+                amplitude_ratio = self.mode_params[self.detection_mode]['amplitude_ratio']
+                if click_peak > amplitude_ratio * local_avg:
                     filtered.append((start, end))
 
         # Merge nearby clicks more aggressively
