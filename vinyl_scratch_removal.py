@@ -36,7 +36,7 @@ class VinylScratchRemoval:
     """
 
     def __init__(self, sample_rate=44100, threshold=3.0, max_click_width_ms=2.0,
-                 detection_mode='standard', ar_order=20):
+                 detection_mode='standard', ar_order=20, padding_ms=0.5):
         """
         Initialize the scratch removal processor.
 
@@ -46,18 +46,20 @@ class VinylScratchRemoval:
             max_click_width_ms: Maximum click width in milliseconds
             detection_mode: 'conservative', 'standard', or 'aggressive'
             ar_order: Order of autoregressive model for interpolation
+            padding_ms: Padding to add around detected clicks in milliseconds
         """
         self.sample_rate = sample_rate
         self.threshold = threshold
         self.max_click_width = int(max_click_width_ms * sample_rate / 1000)
         self.detection_mode = detection_mode
         self.ar_order = ar_order
+        self.padding = int(padding_ms * sample_rate / 1000)
 
         # Detection parameters based on mode
         self.mode_params = {
-            'conservative': {'threshold_mult': 1.5, 'min_gap': 5},
-            'standard': {'threshold_mult': 1.0, 'min_gap': 3},
-            'aggressive': {'threshold_mult': 0.7, 'min_gap': 2}
+            'conservative': {'threshold_mult': 1.5, 'min_gap': 5, 'merge_distance': 10},
+            'standard': {'threshold_mult': 1.0, 'min_gap': 3, 'merge_distance': 20},
+            'aggressive': {'threshold_mult': 0.7, 'min_gap': 2, 'merge_distance': 30}
         }
 
     def detect_clicks(self, audio):
@@ -136,6 +138,7 @@ class VinylScratchRemoval:
         Filter detected clicks based on width and merge nearby clicks.
         """
         filtered = []
+        merge_distance = self.mode_params[self.detection_mode]['merge_distance']
 
         for start, end in clicks:
             width = end - start
@@ -162,19 +165,40 @@ class VinylScratchRemoval:
                 if click_peak > 2 * local_avg:
                     filtered.append((start, end))
 
-        # Merge nearby clicks
+        # Merge nearby clicks more aggressively
         if not filtered:
             return []
 
         merged = [filtered[0]]
         for start, end in filtered[1:]:
             last_start, last_end = merged[-1]
-            if start - last_end < min_gap * 2:
+            # Use merge_distance parameter instead of min_gap * 2
+            if start - last_end < merge_distance:
                 merged[-1] = (last_start, end)
             else:
                 merged.append((start, end))
 
-        return merged
+        # Add padding around each click and ensure we don't exceed boundaries
+        padded = []
+        for start, end in merged:
+            padded_start = max(0, start - self.padding)
+            padded_end = min(len(audio), end + self.padding)
+            padded.append((padded_start, padded_end))
+
+        # Merge again after padding (in case padding caused overlaps)
+        if not padded:
+            return []
+
+        final_merged = [padded[0]]
+        for start, end in padded[1:]:
+            last_start, last_end = final_merged[-1]
+            if start <= last_end:
+                # Overlapping, merge them
+                final_merged[-1] = (last_start, max(end, last_end))
+            else:
+                final_merged.append((start, end))
+
+        return final_merged
 
     def interpolate_ar(self, audio, start, end):
         """
@@ -425,6 +449,8 @@ Examples:
                         help='Detection threshold (lower = more sensitive, default: 3.0)')
     parser.add_argument('--max-width', type=float, default=2.0,
                         help='Maximum click width in milliseconds (default: 2.0)')
+    parser.add_argument('--padding', type=float, default=0.5,
+                        help='Padding around detected clicks in milliseconds (default: 0.5)')
     parser.add_argument('--mode', choices=['conservative', 'standard', 'aggressive'],
                         default='standard', help='Detection mode (default: standard)')
     parser.add_argument('--ar-order', type=int, default=20,
@@ -452,7 +478,8 @@ Examples:
         threshold=args.threshold,
         max_click_width_ms=args.max_width,
         detection_mode=args.mode,
-        ar_order=args.ar_order
+        ar_order=args.ar_order,
+        padding_ms=args.padding
     )
 
     # Process audio
