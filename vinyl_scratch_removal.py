@@ -336,7 +336,41 @@ class VinylScratchRemoval:
             return np.ones(length)
 
         # Tukey window with 50% taper
-        window = signal.tukey(length, alpha=0.5)
+        window = self._tukey_window(length, alpha=0.5)
+        return window
+
+    def _tukey_window(self, length, alpha=0.5):
+        """
+        Generate a Tukey (tapered cosine) window.
+
+        This is a custom implementation for compatibility with older scipy versions.
+
+        Args:
+            length: Window length
+            alpha: Taper parameter (0 to 1), where 0 is rectangular and 1 is Hann
+
+        Returns:
+            Tukey window as numpy array
+        """
+        if alpha <= 0:
+            return np.ones(length)
+        elif alpha >= 1:
+            return np.hanning(length)
+
+        # Calculate the transition width
+        width = int(alpha * (length - 1) / 2.0)
+
+        # Create the window
+        window = np.ones(length)
+
+        # Taper at the beginning
+        for n in range(width):
+            window[n] = 0.5 * (1 + np.cos(np.pi * (2 * n / (alpha * (length - 1)) - 1)))
+
+        # Taper at the end
+        for n in range(length - width, length):
+            window[n] = 0.5 * (1 + np.cos(np.pi * (2 * n / (alpha * (length - 1)) - 2 / alpha + 1)))
+
         return window
 
     def process_stereo(self, left, right):
