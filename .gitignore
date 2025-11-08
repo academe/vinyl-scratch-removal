@@ -42,6 +42,10 @@ venv.bak/
 *.aiff
 *.m4a
 
+# Exception: Track all files in docs/example-audio
+!docs/example-audio/
+!docs/example-audio/**
+
 # Testing
 test_audio/
 examples/*.wav
