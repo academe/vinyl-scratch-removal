@@ -59,8 +59,60 @@ class VinylScratchRemoval:
         self.mode_params = {
             'conservative': {'threshold_mult': 1.5, 'min_gap': 3, 'merge_distance': 10, 'amplitude_ratio': 2.5},
             'standard': {'threshold_mult': 1.0, 'min_gap': 2, 'merge_distance': 20, 'amplitude_ratio': 2.0},
-            'aggressive': {'threshold_mult': 0.7, 'min_gap': 1, 'merge_distance': 30, 'amplitude_ratio': 1.3}
+            'aggressive': {'threshold_mult': 0.7, 'min_gap': 1, 'merge_distance': 30, 'amplitude_ratio': 1.3},
+            'auto': {'threshold_mult': None, 'min_gap': 1, 'merge_distance': 30, 'amplitude_ratio': 1.5}  # Auto-calculated
         }
+
+    def detect_clicks_auto(self, audio):
+        """
+        Automatically detect scratches using statistical outlier detection.
+
+        This mode analyzes the audio's statistical characteristics and identifies
+        outliers that are likely scratches, without requiring manual threshold tuning.
+
+        Args:
+            audio: Input audio signal (1D numpy array)
+
+        Returns:
+            List of tuples (start_idx, end_idx) for detected clicks
+        """
+        # Calculate first and second derivatives
+        diff1 = np.diff(audio, prepend=audio[0])
+        diff2 = np.diff(diff1, prepend=diff1[0])
+
+        abs_diff1 = np.abs(diff1)
+        abs_diff2 = np.abs(diff2)
+
+        # Calculate global statistics to identify outliers
+        # Use median and MAD (Median Absolute Deviation) which are robust to outliers
+        median_diff1 = np.median(abs_diff1)
+        mad_diff1 = np.median(np.abs(abs_diff1 - median_diff1))
+
+        median_diff2 = np.median(abs_diff2)
+        mad_diff2 = np.median(np.abs(abs_diff2 - median_diff2))
+
+        # Define outliers as samples beyond 3-5 MAD from median
+        # MAD-based thresholds are more robust than standard deviation for skewed distributions
+        # Using a multiplier of 3.0 is roughly equivalent to 3 sigma in normal distribution
+        mad_multiplier = 3.0
+        threshold1 = median_diff1 + mad_multiplier * mad_diff1 * 1.4826  # 1.4826 makes MAD consistent with std
+        threshold2 = median_diff2 + mad_multiplier * mad_diff2 * 1.4826
+
+        # Detect outliers in both derivatives
+        candidates_diff1 = abs_diff1 > threshold1
+        candidates_diff2 = abs_diff2 > threshold2
+
+        # Combine detections
+        candidates = candidates_diff1 | candidates_diff2
+
+        # Find connected regions
+        clicks = self._find_click_regions(candidates)
+
+        # Filter using auto mode parameters
+        min_gap = self.mode_params['auto']['min_gap']
+        filtered_clicks = self._filter_clicks(clicks, audio, min_gap)
+
+        return filtered_clicks
 
     def detect_clicks(self, audio):
         """
@@ -77,6 +129,9 @@ class VinylScratchRemoval:
         Returns:
             List of tuples (start_idx, end_idx) for detected clicks
         """
+        # Use auto detection if in auto mode
+        if self.detection_mode == 'auto':
+            return self.detect_clicks_auto(audio)
         # Calculate first and second derivatives
         diff1 = np.diff(audio, prepend=audio[0])
         diff2 = np.diff(diff1, prepend=diff1[0])
@@ -431,16 +486,17 @@ class VinylScratchRemoval:
 
         return interpolated
 
-    def process(self, audio, verbose=False):
+    def process(self, audio, verbose=False, preview=False):
         """
         Process audio to remove clicks and scratches.
 
         Args:
             audio: Input audio (1D numpy array)
             verbose: Print detailed progress information
+            preview: If True, only detect and report scratches without processing
 
         Returns:
-            Processed audio with clicks removed
+            Processed audio with clicks removed (or original if preview=True)
         """
         output = audio.copy()
 
@@ -449,11 +505,29 @@ class VinylScratchRemoval:
 
         print(f"Detected {len(clicks)} clicks/scratches")
 
-        if verbose and len(clicks) > 0:
+        if len(clicks) > 0:
             widths = [end - start for start, end in clicks]
             print(f"  Average click width: {np.mean(widths):.1f} samples ({np.mean(widths)/self.sample_rate*1000:.2f} ms)")
             print(f"  Max click width: {np.max(widths)} samples ({np.max(widths)/self.sample_rate*1000:.2f} ms)")
             print(f"  Min click width: {np.min(widths)} samples ({np.min(widths)/self.sample_rate*1000:.2f} ms)")
+
+            if verbose or preview:
+                # Show time positions of detected scratches
+                print(f"\n  Scratch locations (showing first 20):")
+                for i, (start, end) in enumerate(clicks[:20]):
+                    time_start = start / self.sample_rate
+                    time_end = end / self.sample_rate
+                    width_ms = (end - start) / self.sample_rate * 1000
+                    peak_amp = np.max(np.abs(audio[start:end]))
+                    print(f"    {i+1:3d}. {time_start:8.3f}s - {time_end:8.3f}s  "
+                          f"width: {width_ms:5.2f}ms  peak: {peak_amp:.3f}")
+                if len(clicks) > 20:
+                    print(f"    ... and {len(clicks) - 20} more")
+
+        # If preview mode, return original audio
+        if preview:
+            print("\nPreview mode: No processing performed. Use without --preview to remove scratches.")
+            return audio
 
         # Interpolate each click
         for i, (start, end) in enumerate(clicks):
@@ -517,7 +591,7 @@ class VinylScratchRemoval:
 
         return window
 
-    def process_stereo(self, left, right, verbose=False):
+    def process_stereo(self, left, right, verbose=False, preview=False):
         """
         Process stereo audio.
 
@@ -525,15 +599,16 @@ class VinylScratchRemoval:
             left: Left channel audio
             right: Right channel audio
             verbose: Print detailed progress information
+            preview: If True, only detect and report scratches without processing
 
         Returns:
             Tuple of (processed_left, processed_right)
         """
         print("Processing left channel...")
-        left_processed = self.process(left, verbose=verbose)
+        left_processed = self.process(left, verbose=verbose, preview=preview)
 
         print("Processing right channel...")
-        right_processed = self.process(right, verbose=verbose)
+        right_processed = self.process(right, verbose=verbose, preview=preview)
 
         return left_processed, right_processed
 
@@ -545,10 +620,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage
-  python vinyl_scratch_removal.py input.wav output.wav
+  # Automatic mode (recommended - no tuning needed)
+  python vinyl_scratch_removal.py input.wav output.wav --mode auto
 
-  # Aggressive click removal
+  # Preview what would be detected (without processing)
+  python vinyl_scratch_removal.py input.wav output.wav --mode auto --preview
+
+  # Aggressive click removal with manual thresholds
   python vinyl_scratch_removal.py input.wav output.wav --mode aggressive --threshold 2.0
 
   # Conservative (only remove obvious clicks)
@@ -559,15 +637,17 @@ Examples:
     parser.add_argument('input', help='Input audio file (WAV format)')
     parser.add_argument('output', help='Output audio file (WAV format)')
     parser.add_argument('--threshold', type=float, default=3.0,
-                        help='Detection threshold (lower = more sensitive, default: 3.0)')
-    parser.add_argument('--max-width', type=float, default=2.0,
-                        help='Maximum click width in milliseconds (default: 2.0)')
-    parser.add_argument('--padding', type=float, default=0.5,
-                        help='Padding around detected clicks in milliseconds (default: 0.5)')
-    parser.add_argument('--mode', choices=['conservative', 'standard', 'aggressive'],
-                        default='standard', help='Detection mode (default: standard)')
+                        help='Detection threshold in standard deviations (default: 3.0, ignored in auto mode)')
+    parser.add_argument('--max-width', type=float, default=5.0,
+                        help='Maximum click width in milliseconds (default: 5.0)')
+    parser.add_argument('--padding', type=float, default=1.0,
+                        help='Padding around detected clicks in milliseconds (default: 1.0)')
+    parser.add_argument('--mode', choices=['auto', 'conservative', 'standard', 'aggressive'],
+                        default='auto', help='Detection mode (default: auto - uses statistical outlier detection)')
     parser.add_argument('--ar-order', type=int, default=20,
                         help='AR model order for interpolation (default: 20)')
+    parser.add_argument('--preview', action='store_true',
+                        help='Preview mode: show what would be detected without processing')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Print detailed processing information')
 
@@ -599,17 +679,19 @@ Examples:
     print("Processing audio...")
     if audio.ndim == 1:
         # Mono
-        processed = processor.process(audio, verbose=args.verbose)
+        processed = processor.process(audio, verbose=args.verbose, preview=args.preview)
     else:
         # Stereo
-        processed_left, processed_right = processor.process_stereo(audio[:, 0], audio[:, 1], verbose=args.verbose)
+        processed_left, processed_right = processor.process_stereo(audio[:, 0], audio[:, 1],
+                                                                     verbose=args.verbose, preview=args.preview)
         processed = np.column_stack([processed_left, processed_right])
 
-    # Save output
-    print(f"Saving to {args.output}...")
-    sf.write(args.output, processed, sample_rate)
+    # Save output (skip if preview mode)
+    if not args.preview:
+        print(f"Saving to {args.output}...")
+        sf.write(args.output, processed, sample_rate)
+        print("Done!")
 
-    print("Done!")
     return 0
 
 
