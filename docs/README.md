@@ -53,6 +53,24 @@ Topics covered:
 
 ---
 
+### [ALTERNATIVE_IMPLEMENTATIONS.md](ALTERNATIVE_IMPLEMENTATIONS.md)
+**Can the high-quality Python algorithm be built into a Nyquist plugin?**
+
+Topics covered:
+- Why AR interpolation cannot work in Nyquist (fundamental constraints)
+- Detailed explanation of what's needed vs what Nyquist provides
+- Alternative plugin formats (LADSPA, LV2, VST, native C++)
+- Hybrid approaches (external calls, scripting integration)
+- Implementation roadmap for each approach
+- Effort vs benefit analysis
+- Recommended path forward
+
+**Who should read**: Anyone wondering why there are two implementations, or developers considering creating a compiled plugin.
+
+**Key takeaway**: Nyquist's signal-based paradigm makes AR interpolation impossible. Best alternatives are LV2 plugin or native Audacity C++ effect.
+
+---
+
 ## Quick Reference
 
 ### Algorithm Summary
@@ -221,12 +239,19 @@ docs/
 │       - Limitations and workarounds
 │       - Examples and patterns
 │
-└── IMPLEMENTATION_NOTES.md
-    └── This plugin's implementation
-        - Design decisions
-        - Algorithm details
-        - Trade-offs
-        - Testing and future work
+├── IMPLEMENTATION_NOTES.md
+│   └── This plugin's implementation
+│       - Design decisions
+│       - Algorithm details
+│       - Trade-offs
+│       - Testing and future work
+│
+└── ALTERNATIVE_IMPLEMENTATIONS.md
+    └── Beyond Nyquist constraints
+        - Why AR interpolation can't work in Nyquist
+        - Alternative plugin formats (LADSPA, LV2, C++)
+        - Hybrid approaches
+        - Implementation roadmap
 ```
 
 ---
