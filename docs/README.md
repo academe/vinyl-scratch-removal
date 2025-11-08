@@ -89,6 +89,24 @@ Topics covered:
 
 ---
 
+### [PERIODICITY_DETECTION.md](PERIODICITY_DETECTION.md)
+**Using vinyl rotation periods to improve click detection accuracy**
+
+Topics covered:
+- Why scratches repeat every rotation (physical insight)
+- Rotation periods for 33⅓, 45, and 78 RPM records
+- Automatic RPM detection from click patterns
+- Periodicity-based classification (periodic vs random clicks)
+- Implementation using autocorrelation
+- Confidence-based processing strategies
+- Example code and visualization
+
+**Who should read**: Anyone interested in advanced detection techniques, or implementing production-quality restoration.
+
+**Key takeaway**: Physical scratches produce periodic clicks matching record rotation. This can drastically reduce false positives and improve detection confidence.
+
+---
+
 ## Quick Reference
 
 ### Algorithm Summary
