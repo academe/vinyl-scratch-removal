@@ -91,10 +91,10 @@ class VinylScratchRemoval:
         median_diff2 = np.median(abs_diff2)
         mad_diff2 = np.median(np.abs(abs_diff2 - median_diff2))
 
-        # Define outliers as samples beyond 3-5 MAD from median
-        # MAD-based thresholds are more robust than standard deviation for skewed distributions
-        # Using a multiplier of 3.0 is roughly equivalent to 3 sigma in normal distribution
-        mad_multiplier = 3.0
+        # Use a much higher multiplier to avoid false positives
+        # Scratches are extreme outliers, not just mild variations
+        # Using 10 MAD is very conservative - only catches extreme spikes
+        mad_multiplier = 10.0
         threshold1 = median_diff1 + mad_multiplier * mad_diff1 * 1.4826  # 1.4826 makes MAD consistent with std
         threshold2 = median_diff2 + mad_multiplier * mad_diff2 * 1.4826
 
@@ -108,7 +108,7 @@ class VinylScratchRemoval:
         # Find connected regions
         clicks = self._find_click_regions(candidates)
 
-        # Filter using auto mode parameters
+        # Filter using auto mode parameters with strict amplitude checking
         min_gap = self.mode_params['auto']['min_gap']
         filtered_clicks = self._filter_clicks(clicks, audio, min_gap)
 
@@ -620,17 +620,20 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Automatic mode (recommended - no tuning needed)
-  python vinyl_scratch_removal.py input.wav output.wav --mode auto
+  # Basic usage (standard mode)
+  python vinyl_scratch_removal.py input.wav output.wav
 
   # Preview what would be detected (without processing)
-  python vinyl_scratch_removal.py input.wav output.wav --mode auto --preview
+  python vinyl_scratch_removal.py input.wav output.wav --preview
 
-  # Aggressive click removal with manual thresholds
-  python vinyl_scratch_removal.py input.wav output.wav --mode aggressive --threshold 2.0
+  # Automatic mode (parameter-free detection, experimental)
+  python vinyl_scratch_removal.py input.wav output.wav --mode auto
+
+  # Aggressive click removal
+  python vinyl_scratch_removal.py input.wav output.wav --mode aggressive
 
   # Conservative (only remove obvious clicks)
-  python vinyl_scratch_removal.py input.wav output.wav --mode conservative --threshold 4.0
+  python vinyl_scratch_removal.py input.wav output.wav --mode conservative
         """
     )
 
@@ -643,7 +646,7 @@ Examples:
     parser.add_argument('--padding', type=float, default=1.0,
                         help='Padding around detected clicks in milliseconds (default: 1.0)')
     parser.add_argument('--mode', choices=['auto', 'conservative', 'standard', 'aggressive'],
-                        default='auto', help='Detection mode (default: auto - uses statistical outlier detection)')
+                        default='standard', help='Detection mode (default: standard, try auto for parameter-free detection)')
     parser.add_argument('--ar-order', type=int, default=20,
                         help='AR model order for interpolation (default: 20)')
     parser.add_argument('--preview', action='store_true',
