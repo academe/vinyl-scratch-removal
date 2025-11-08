@@ -71,6 +71,24 @@ Topics covered:
 
 ---
 
+### [ARCHITECTURE_AND_PORTABILITY.md](ARCHITECTURE_AND_PORTABILITY.md)
+**How to create a portable core library with multiple wrappers (LV2, CLI, etc.)**
+
+Topics covered:
+- Core library + wrapper architecture (one implementation, many interfaces)
+- Python compilation options (Cython, PyBind11, embedded interpreter)
+- Detailed comparison: Cython vs C++ core
+- Architecture designs (pure C++, Cython, hybrid)
+- Practical migration path from Python to compiled library
+- Build systems (CMake, setup.py)
+- Step-by-step implementation roadmap
+
+**Who should read**: Developers wanting to create LV2/LADSPA plugins, or anyone interested in portable library design.
+
+**Key takeaway**: Core library + wrappers is the right approach. Python can be compiled via Cython (great for Python developers), or port to C++ for maximum portability.
+
+---
+
 ## Quick Reference
 
 ### Algorithm Summary
@@ -246,12 +264,19 @@ docs/
 │       - Trade-offs
 │       - Testing and future work
 │
-└── ALTERNATIVE_IMPLEMENTATIONS.md
-    └── Beyond Nyquist constraints
-        - Why AR interpolation can't work in Nyquist
-        - Alternative plugin formats (LADSPA, LV2, C++)
-        - Hybrid approaches
-        - Implementation roadmap
+├── ALTERNATIVE_IMPLEMENTATIONS.md
+│   └── Beyond Nyquist constraints
+│       - Why AR interpolation can't work in Nyquist
+│       - Alternative plugin formats (LADSPA, LV2, C++)
+│       - Hybrid approaches
+│       - Implementation roadmap
+│
+└── ARCHITECTURE_AND_PORTABILITY.md
+    └── Portable library design
+        - Core library + wrapper architecture
+        - Compiling Python to library (Cython)
+        - C++ porting strategy
+        - Build systems and migration path
 ```
 
 ---
