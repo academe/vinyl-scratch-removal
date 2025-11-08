@@ -295,12 +295,13 @@ class VinylScratchRemoval:
 
         return interpolated
 
-    def process(self, audio):
+    def process(self, audio, verbose=False):
         """
         Process audio to remove clicks and scratches.
 
         Args:
             audio: Input audio (1D numpy array)
+            verbose: Print detailed progress information
 
         Returns:
             Processed audio with clicks removed
@@ -312,6 +313,12 @@ class VinylScratchRemoval:
 
         print(f"Detected {len(clicks)} clicks/scratches")
 
+        if verbose and len(clicks) > 0:
+            widths = [end - start for start, end in clicks]
+            print(f"  Average click width: {np.mean(widths):.1f} samples ({np.mean(widths)/self.sample_rate*1000:.2f} ms)")
+            print(f"  Max click width: {np.max(widths)} samples ({np.max(widths)/self.sample_rate*1000:.2f} ms)")
+            print(f"  Min click width: {np.min(widths)} samples ({np.min(widths)/self.sample_rate*1000:.2f} ms)")
+
         # Interpolate each click
         for i, (start, end) in enumerate(clicks):
             if i % 100 == 0 and i > 0:
@@ -320,9 +327,9 @@ class VinylScratchRemoval:
             # Use AR interpolation for better quality
             interpolated = self.interpolate_ar(audio, start, end)
 
-            # Apply with smooth windowing to avoid discontinuities
-            window = self._get_blend_window(len(interpolated))
-            output[start:end] = interpolated * window + output[start:end] * (1 - window)
+            # Simply replace the corrupted samples with interpolated ones
+            # No blending - we want to completely remove the click
+            output[start:end] = interpolated
 
         return output
 
@@ -373,22 +380,23 @@ class VinylScratchRemoval:
 
         return window
 
-    def process_stereo(self, left, right):
+    def process_stereo(self, left, right, verbose=False):
         """
         Process stereo audio.
 
         Args:
             left: Left channel audio
             right: Right channel audio
+            verbose: Print detailed progress information
 
         Returns:
             Tuple of (processed_left, processed_right)
         """
         print("Processing left channel...")
-        left_processed = self.process(left)
+        left_processed = self.process(left, verbose=verbose)
 
         print("Processing right channel...")
-        right_processed = self.process(right)
+        right_processed = self.process(right, verbose=verbose)
 
         return left_processed, right_processed
 
@@ -421,6 +429,8 @@ Examples:
                         default='standard', help='Detection mode (default: standard)')
     parser.add_argument('--ar-order', type=int, default=20,
                         help='AR model order for interpolation (default: 20)')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help='Print detailed processing information')
 
     args = parser.parse_args()
 
@@ -449,10 +459,10 @@ Examples:
     print("Processing audio...")
     if audio.ndim == 1:
         # Mono
-        processed = processor.process(audio)
+        processed = processor.process(audio, verbose=args.verbose)
     else:
         # Stereo
-        processed_left, processed_right = processor.process_stereo(audio[:, 0], audio[:, 1])
+        processed_left, processed_right = processor.process_stereo(audio[:, 0], audio[:, 1], verbose=args.verbose)
         processed = np.column_stack([processed_left, processed_right])
 
     # Save output
