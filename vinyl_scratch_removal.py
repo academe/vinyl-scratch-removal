@@ -214,6 +214,104 @@ class VinylScratchRemoval:
 
         return final_merged
 
+    def interpolate_spectral(self, audio, start, end):
+        """
+        Interpolate using spectral/frequency analysis.
+
+        This method analyzes the frequency content before and after the scratch
+        and synthesizes the missing samples by continuing those frequency patterns.
+        This works particularly well for musical content with periodic waveforms.
+
+        Args:
+            audio: Full audio signal
+            start: Start index of click
+            end: End index of click
+
+        Returns:
+            Interpolated samples
+        """
+        gap_length = end - start
+
+        # Need enough context for meaningful frequency analysis
+        min_context = max(512, gap_length * 4)
+
+        if start < min_context or end + min_context >= len(audio):
+            # Not enough context, fall back to AR
+            return self.interpolate_ar(audio, start, end)
+
+        # Get context windows before and after
+        context_len = min(2048, start, len(audio) - end)
+        before = audio[start - context_len:start]
+        after = audio[end:end + context_len]
+
+        try:
+            # Analyze frequency content using FFT
+            fft_before = np.fft.rfft(before)
+            fft_after = np.fft.rfft(after)
+
+            # Average the magnitude and phase from both sides
+            # This gives us the dominant frequencies and their phases
+            mag_avg = (np.abs(fft_before) + np.abs(fft_after)) / 2
+
+            # For phase, we need to account for the time shift
+            # Interpolate phase between before and after
+            phase_before = np.angle(fft_before)
+            phase_after = np.angle(fft_after)
+
+            # Calculate phase increment per sample for each frequency
+            freq_bins = len(fft_before)
+            freqs = np.fft.rfftfreq(len(before), 1.0 / self.sample_rate)
+
+            # Synthesize the gap
+            t = np.arange(gap_length)
+            synthesized = np.zeros(gap_length)
+
+            # Use only the most significant frequency components
+            # to avoid noise amplification
+            num_components = min(50, freq_bins // 2)
+            top_freqs = np.argsort(mag_avg)[-num_components:]
+
+            for freq_idx in top_freqs:
+                if freq_idx == 0:
+                    # DC component
+                    continue
+
+                freq = freqs[freq_idx]
+                magnitude = mag_avg[freq_idx]
+
+                # Estimate phase at the start of the gap
+                # Use the phase from the end of the 'before' segment
+                phase_start = phase_before[freq_idx]
+
+                # Generate this frequency component through the gap
+                omega = 2 * np.pi * freq / self.sample_rate
+                component = magnitude * np.cos(omega * t + phase_start)
+                synthesized += component
+
+            # Normalize to match the expected amplitude
+            if len(synthesized) > 0 and np.max(np.abs(synthesized)) > 0:
+                # Match the amplitude to surrounding audio
+                expected_amp = (np.max(np.abs(before[-50:])) + np.max(np.abs(after[:50]))) / 2
+                actual_amp = np.max(np.abs(synthesized))
+                if actual_amp > 0:
+                    synthesized = synthesized * (expected_amp / actual_amp)
+
+            # Apply a window to smoothly transition in/out
+            window = np.hanning(gap_length)
+
+            # Blend spectral synthesis with endpoints for smooth transition
+            if gap_length > 4:
+                # Simple linear interpolation for endpoints
+                endpoint_bridge = np.linspace(before[-1], after[0], gap_length)
+                # Blend: mostly spectral in the middle, more endpoint-based at edges
+                synthesized = synthesized * window + endpoint_bridge * (1 - window)
+
+            return synthesized
+
+        except Exception as e:
+            # Fall back to AR if spectral analysis fails
+            return self.interpolate_ar(audio, start, end)
+
     def interpolate_ar(self, audio, start, end):
         """
         Interpolate using Autoregressive (AR) Linear Prediction.
@@ -362,8 +460,9 @@ class VinylScratchRemoval:
             if i % 100 == 0 and i > 0:
                 print(f"Processing click {i}/{len(clicks)}")
 
-            # Use AR interpolation for better quality
-            interpolated = self.interpolate_ar(audio, start, end)
+            # Use spectral interpolation for musical content
+            # This analyzes frequency patterns and "bridges" the waveform
+            interpolated = self.interpolate_spectral(audio, start, end)
 
             # Simply replace the corrupted samples with interpolated ones
             # No blending - we want to completely remove the click
